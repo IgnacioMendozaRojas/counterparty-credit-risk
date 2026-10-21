@@ -74,59 +74,10 @@ def results_table(profiles) -> str:
 
 
 # ── Figures ────────────────────────────────────────────────────────────
-THEMES = {
-    "light": dict(
-        surface="#fcfcfb",
-        text="#0b0b0b",
-        muted="#52514e",
-        grid="#e4e3df",
-        series=["#2a78d6", "#eb6834", "#1baf7a"],
-    ),
-    "dark": dict(
-        surface="#1a1a19",
-        text="#f0efec",
-        muted="#c3c2b7",
-        grid="#34332f",
-        series=["#3987e5", "#d95926", "#199e70"],
-    ),
-}
-
-
-def _axes(theme, title, subtitle):
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(9, 4.6), dpi=150)
-    fig.patch.set_facecolor(theme["surface"])
-    ax.set_facecolor(theme["surface"])
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(theme["grid"])
-    ax.tick_params(colors=theme["muted"], labelsize=9)
-    ax.grid(axis="y", color=theme["grid"], linewidth=0.8)
-    ax.set_axisbelow(True)
-    ax.set_xlabel("Years", color=theme["muted"], fontsize=9)
-    ax.set_ylabel("Millions", color=theme["muted"], fontsize=9)
-    fig.text(0.07, 0.95, title, color=theme["text"], fontsize=13, weight="bold")
-    fig.text(0.07, 0.905, subtitle, color=theme["muted"], fontsize=9.5)
-    fig.subplots_adjust(left=0.07, right=0.97, top=0.85, bottom=0.12)
-    return fig, ax
-
-
-def _line(ax, theme, x, y, color, label, at: float, dy: int = 8):
-    """Plot a series and label it directly at x = `at`, nudged dy points vertically."""
-    ax.plot(x, y / 1e6, color=color, linewidth=2, label=label, solid_capstyle="round")
-    k = int(np.argmin(np.abs(x - at)))
-    ax.annotate(
-        label,
-        (x[k], y[k] / 1e6),
-        xytext=(0, dy),
-        textcoords="offset points",
-        color=theme["text"],
-        fontsize=9,
-        ha="center",
-        va="bottom" if dy >= 0 else "top",
-    )
+SOURCE = (
+    "Illustrative netting set: 10y payer IRS 100M, 5y receiver IRS 60M, 2y FX forward 20M. "
+    "10,000 Hull-White/GBM paths, weekly grid. github.com/IgnacioMendozaRojas/counterparty-credit-risk"
+)
 
 
 def _last_nonzero(y):
@@ -134,49 +85,72 @@ def _last_nonzero(y):
     return idx[-1] if idx.size else len(y) - 1
 
 
-def figures(profiles) -> None:
-    import matplotlib.pyplot as plt
+def figures(profiles, standalone_cva: float) -> None:
+    from ccr.figstyle import charts
 
-    DOCS.mkdir(exist_ok=True)
     unsec = profiles["Uncollateralised"]
     t = unsec.times
-    for mode, theme in THEMES.items():
-        # 1. Exposure profile of the uncollateralised netting set
-        fig, ax = _axes(
-            theme,
-            "Exposure profile, uncollateralised netting set",
-            "2 interest rate swaps + 1 FX forward · 10,000 Hull-White / GBM paths",
-        )
-        end = _last_nonzero(unsec.ee) + 1
-        for y, color, label, dy in [
-            (unsec.pfe, theme["series"][1], "PFE 97.5%", 8),
-            (unsec.ee, theme["series"][0], "EE", 8),
-            (unsec.ene, theme["series"][2], "ENE", -8),
-        ]:
-            _line(ax, theme, t[:end], y[:end], color, label, at=3.2, dy=dy)
-        ax.axhline(0, color=theme["muted"], linewidth=0.8)
-        leg = ax.legend(frameon=False, loc="upper right", fontsize=9, labelcolor=theme["text"])
-        leg.set_bbox_to_anchor((1.0, 1.0))
-        fig.savefig(DOCS / f"exposure_profile_{mode}.png", facecolor=theme["surface"])
-        plt.close(fig)
+    end = _last_nonzero(unsec.ee) + 1
+    x = t[:end]
+    names = list(profiles)
 
-        # 2. Expected exposure under different collateral agreements
-        fig, ax = _axes(
-            theme,
-            "Collateral cuts expected exposure",
-            "EE by CSA terms · margin period of risk 10 business days",
+    # 1. Hero: collateral against the tail of the exposure (PFE)
+    peak = {n: p.peak_pfe for n, p in profiles.items()}
+    cut = 1 - peak["CSA, zero threshold"] / peak["Uncollateralised"]
+    for c in charts(
+        f"Daily margining cuts peak exposure by {cut:.0%}",
+        "Potential future exposure (97.5%) of one netting set under three collateral agreements, millions",
+        SOURCE,
+    ):
+        for i, (n, lx, dy) in enumerate(zip(names, (2.6, 3.6, 4.4), (12, 10, 10), strict=True)):
+            c.line(x, profiles[n].pfe[:end] / 1e6, i, n, label_x=lx, dy=dy)
+        k = int(np.argmax(unsec.pfe[:end]))
+        c.note(
+            (x[k], unsec.pfe[k] / 1e6),
+            f"peak {peak['Uncollateralised'] / 1e6:.1f}M uncollateralised\n{peak['CSA, zero threshold'] / 1e6:.1f}M with daily margining",
+            (40, -10),
         )
-        label_at = {
-            "Uncollateralised": (3.2, 10),
-            "CSA, threshold 5M": (3.2, -10),
-            "CSA, zero threshold": (4.2, 10),
-        }
-        for (name, p), color in zip(profiles.items(), theme["series"], strict=True):
-            at, dy = label_at[name]
-            _line(ax, theme, t[:end], p.ee[:end], color, name, at=at, dy=dy)
-        ax.legend(frameon=False, loc="upper right", fontsize=9, labelcolor=theme["text"])
-        fig.savefig(DOCS / f"collateral_effect_{mode}.png", facecolor=theme["surface"])
-        plt.close(fig)
+        c.ax.set_ylim(bottom=0)
+        c.yaxis("millions")
+        c.xlabel("years")
+        c.legend("upper left")
+        c.save(DOCS, "pfe-by-csa")
+
+    # 2. Anatomy of the uncollateralised profile
+    for c in charts(
+        "Exposure peaks mid-life, then amortises with every coupon",
+        "Uncollateralised netting set: expected exposure (EE), PFE 97.5% and expected negative exposure, millions",
+        SOURCE,
+    ):
+        for i, (y, label, dy) in enumerate(
+            [(unsec.pfe, "PFE 97.5%", 0), (unsec.ee, "EE", 4), (unsec.ene, "ENE", -4)]
+        ):
+            c.line(x, y[:end] / 1e6, [1, 0, 2][i], label, dy=dy)
+        c.ax.axhline(0, color=c.t["muted"], linewidth=0.8)
+        j = int(np.argmin(np.abs(x - 2.0)))
+        c.note((x[j], unsec.ee[j] / 1e6), "FX forward settles: exposure steps down", (20, 45))
+        c.yaxis("millions")
+        c.xlabel("years")
+        c.legend("upper right")
+        c.save(DOCS, "exposure-profile")
+
+    # 3. What each decision is worth in CVA
+    bars = {
+        "Trades booked standalone": standalone_cva,
+        "Netted": cva(profiles["Uncollateralised"], counterparty),
+        "Netted + CSA, threshold 5M": cva(profiles["CSA, threshold 5M"], counterparty),
+        "Netted + CSA, zero threshold": cva(profiles["CSA, zero threshold"], counterparty),
+    }
+    for c in charts(
+        f"Netting and margining take CVA from {standalone_cva / 1e3:,.0f}k to "
+        f"{bars['Netted + CSA, zero threshold'] / 1e3:,.0f}k",
+        "Credit valuation adjustment of the same three trades, thousands; counterparty CDS 150bp, recovery 40%",
+        SOURCE,
+        size=(9, 3.6),
+    ):
+        c.hbars(list(bars), [v / 1e3 for v in bars.values()], fmt="{:,.0f}k")
+        c.fig.subplots_adjust(left=0.27, right=0.92, top=0.74, bottom=0.24)
+        c.save(DOCS, "cva-by-decision")
 
 
 def main(argv: list[str]) -> int:
@@ -187,7 +161,7 @@ def main(argv: list[str]) -> int:
     print(table)
     print(f"\nNetting benefit on CVA vs trades booked standalone: {netting_benefit:.1%}")
     if "--no-plots" not in argv:
-        figures(profiles)
+        figures(profiles, cva_from(standalone, sim))
         (DOCS / "results.md").write_text(
             table + f"\n\nNetting benefit on CVA vs standalone trades: {netting_benefit:.1%}\n",
             encoding="utf-8",

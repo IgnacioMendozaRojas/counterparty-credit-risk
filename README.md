@@ -4,23 +4,62 @@
 ![Python](https://img.shields.io/badge/python-3.11%20|%203.12%20|%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-A Monte Carlo engine that answers the two questions a counterparty risk desk asks about
-every OTC derivatives portfolio:
+**Counterparty credit risk and derivatives.** A Monte Carlo engine that measures how much a derivatives counterparty could owe in the future (EE, PFE, Basel EEPE) and what that risk is worth today (CVA, DVA), with netting and collateral.
 
-1. **How much could this counterparty owe us in the future?** Exposure profiles: EE, PFE,
-   EPE and the Basel EEPE, per netting set, with or without collateral.
-2. **What is that risk worth today?** CVA and DVA, plus their sensitivity to credit spreads.
+> At Banco Ripley I build the stochastic PFE models behind counterparty limits and run CVA/DVA sensitivity analysis. This repository rebuilds that kind of model from public theory (Gregory; Brigo & Mercurio; Basel CRE53), with every pricing component checked against a closed-form result. No bank code, data or parameters; the example portfolio is illustrative.
 
-It is written from public theory (Gregory; Brigo & Mercurio; Basel CRE53) to mirror the
-kind of PFE and CVA models used in bank risk teams, with every pricing component checked
-against a closed-form result.
+## Results
+
+On one netting set (a 10-year payer swap of 100M, a 5-year receiver swap of 60M and a 2-year FX forward of 20M; counterparty CDS 150bp):
+
+- **Daily margining cuts peak PFE by 70%**, from 19.1M to 5.7M. A 5M threshold already takes it to 7.8M.
+- **Netting the three trades cuts CVA by 26%** against booking them standalone (427k to 316k); a zero-threshold CSA takes it to 33k.
+- **Collateralised exposure spikes on payment dates**, because a settling trade leaves the netting set while collateral still reflects its value ten days earlier. The engine reproduces this known effect instead of smoothing it away.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/exposure_profile_dark.png">
-  <img alt="Exposure profile: PFE at 97.5% peaks near 19M around year 5.5, EE peaks near 4.6M, ENE mirrors below zero" src="docs/exposure_profile_light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/pfe-by-csa-dark.png">
+  <img alt="PFE 97.5% under three collateral agreements: uncollateralised peaks at 19.1M in year 5.5, threshold 5M stays near 6M, zero threshold near 2M with spikes on payment dates" src="docs/pfe-by-csa-light.png">
 </picture>
 
-## What's inside
+## What this shows
+
+| Task in a counterparty risk team | Where it is done here |
+|---|---|
+| Set or check a counterparty limit | PFE at any quantile per netting set, over the life of the trades ([`exposure.py`](src/ccr/exposure.py)) |
+| Price the credit risk of a new trade | CVA and DVA from CDS-implied hazard rates, and the netting benefit of adding the trade ([`cva.py`](src/ccr/cva.py)) |
+| Negotiate collateral terms (CSA) | Thresholds, minimum transfer amount, initial margin and margin period of risk ([`collateral.py`](src/ccr/collateral.py)) |
+| Regulatory exposure | Effective EE and EEPE under the Basel internal models method |
+| Explain a number to a committee | Every component validated against closed forms; results reproduced by one script |
+
+## Results in detail
+
+Run with `python examples/portfolio.py` (10,000 paths on a weekly grid).
+
+| Netting set | EPE (1y) | EEPE (1y) | Peak PFE 97.5% | CVA | DVA | CS01 |
+|---|---:|---:|---:|---:|---:|---:|
+| Uncollateralised | 1.34M | 1.34M | 19.09M | 316k | 141k | 1.9k |
+| CSA, threshold 5M | 1.21M | 1.21M | 7.80M | 208k | 91k | 1.2k |
+| CSA, zero threshold | 0.39M | 0.46M | 5.70M | 33k | 18k | 0.2k |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/exposure-profile-dark.png">
+  <img alt="Uncollateralised exposure profile: PFE rises to 19.1M around year 5.5 and steps down at each coupon; EE peaks near 4.6M; ENE mirrors it below zero" src="docs/exposure-profile-light.png">
+</picture>
+
+**Reading the chart.** The saw-tooth in every profile is the swaps paying coupons:
+exposure drops each time a cash flow settles. Under a zero-threshold CSA the residual
+exposure is only what the portfolio can move during the 10-day margin period of risk, but
+it *spikes* on payment dates, most visibly when the FX forward settles at year 2. The
+trade's value leaves the netting set while collateral still reflects the value observed
+10 days earlier. These spikes are a real feature of collateralised exposure, not noise
+(Andersen, Pykhtin & Sokol, 2017).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/cva-by-decision-dark.png">
+  <img alt="CVA of the same trades: 427k standalone, 316k netted, 208k with a 5M-threshold CSA, 33k with a zero-threshold CSA" src="docs/cva-by-decision-light.png">
+</picture>
+
+## How it works
 
 | Component | Implementation |
 |---|---|
@@ -33,34 +72,8 @@ against a closed-form result.
 | **Valuation adjustments** | Unilateral CVA and DVA from CDS-implied hazard rates; CS01 |
 | **Variance reduction** | Antithetic variates; common random numbers for sensitivities |
 
-## Example: one counterparty, three CSAs
 
-A netting set with a 10y payer swap (100M, at par), a 5y receiver swap (60M) and a 2y FX
-forward (buy 20M foreign). Counterparty CDS 150bp, own CDS 80bp, recovery 40%.
-10,000 paths on a weekly grid. Run it with `python examples/portfolio.py`.
-
-| Netting set | EPE (1y) | EEPE (1y) | Peak PFE 97.5% | CVA | DVA | CS01 |
-|---|---:|---:|---:|---:|---:|---:|
-| Uncollateralised | 1.34M | 1.34M | 19.09M | 316k | 141k | 1.9k |
-| CSA, threshold 5M | 1.21M | 1.21M | 7.80M | 208k | 91k | 1.2k |
-| CSA, zero threshold | 0.39M | 0.46M | 5.70M | 33k | 18k | 0.2k |
-
-Netting the three trades cuts CVA by **26%** compared with booking them standalone.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/collateral_effect_dark.png">
-  <img alt="Expected exposure by CSA terms: uncollateralised peaks near 4.6M, threshold 5M caps near 2.4M, zero threshold stays below 0.5M with spikes at payment dates" src="docs/collateral_effect_light.png">
-</picture>
-
-**Reading the chart.** The saw-tooth in every profile is the swaps paying coupons:
-exposure drops each time a cash flow settles. Under a zero-threshold CSA the residual
-exposure is only what the portfolio can move during the 10-day margin period of risk, but
-it *spikes* on payment dates, most visibly when the FX forward settles at year 2. The
-trade's value leaves the netting set while collateral still reflects the value observed
-10 days earlier. These spikes are a real feature of collateralised exposure, not noise
-(Andersen, Pykhtin & Sokol, 2017).
-
-## Methodology
+### Methodology
 
 **Short rate.** $dr = [\theta(t) - a\,r]\,dt + \sigma\,dW_1$, simulated as
 $r(t) = x(t) + \alpha(t)$ with $x$ an Ornstein-Uhlenbeck process and $\alpha$ chosen so
@@ -74,6 +87,7 @@ $E(t) = \max(V(t) - C(t), 0)$, with $C(t)$ based on $V(t - \text{MPR})$ net of t
 **CVA.** Assuming independence between exposure and default (no wrong-way risk):
 
 $$\text{CVA} = (1-R)\sum_i \mathbb{E}\big[D(0,t_i)\,E(t_i)\big]\;\big[S(t_{i-1}) - S(t_i)\big],\qquad S(t) = e^{-\lambda t},\ \lambda = \frac{s}{1-R}$$
+
 
 ## Validation
 
@@ -90,7 +104,8 @@ not just against itself:
 - Netting never increases exposure; collateral and tighter CSA terms reduce it.
 - CVA matches the closed form for a constant exposure profile.
 
-## Usage
+
+## Run it
 
 ```python
 from ccr import (
@@ -130,6 +145,7 @@ pip install -e ".[dev]"
 pytest
 python examples/portfolio.py
 ```
+
 
 ## Limitations and next steps
 
