@@ -68,6 +68,7 @@ class Chart:
     def __init__(self, theme: str, title: str, subtitle: str, source: str, size=(9, 4.8)):
         self.mode, self.t = theme, THEMES[theme]
         plt.rcParams["font.family"] = FONT
+        plt.rcParams["text.parse_math"] = False  # "US$" in titles must stay text
         self.fig, self.ax = plt.subplots(figsize=size, dpi=150)
         t, ax = self.t, self.ax
         self.fig.patch.set_facecolor(t["surface"])
@@ -98,15 +99,11 @@ class Chart:
         return self.t["series"][i]
 
     # ── marks ──────────────────────────────────────────────────────────
-    def line(
-        self, x, y, i: int, label: str, end_label: bool = True, dy: float = 0, label_x=None, **kw
-    ):
+    def line(self, x, y, i: int, label: str, end_label: bool = True, dy: float = 0, label_x=None, **kw):
         """A 2 px series line, labelled at its end (or at `label_x`, offset `dy` points)."""
         import numpy as np
 
-        self.ax.plot(
-            x, y, color=self.color(i), linewidth=2, solid_capstyle="round", label=label, **kw
-        )
+        self.ax.plot(x, y, color=self.color(i), linewidth=2, solid_capstyle="round", label=label, **kw)
         if not end_label:
             return
         k = len(x) - 1 if label_x is None else int(np.argmin(np.abs(np.asarray(x) - label_x)))
@@ -122,14 +119,40 @@ class Chart:
             annotation_clip=False,
         )
 
-    def hbars(self, labels, values, fmt="{:,.0f}", highlight: set | None = None):
-        """Horizontal bars, largest on top, value at the tip; highlighted bars in slot 1."""
-        pairs = sorted(zip(labels, values, strict=True), key=lambda p: p[1])
+    def stack(self, x, columns: dict, labels: bool = True):
+        """Stacked areas in palette order, separated by a surface-colour gap, labelled at the right end."""
+        names = list(columns)
+        self.ax.stackplot(
+            x,
+            *[columns[n] for n in names],
+            colors=self.t["series"][: len(names)],
+            edgecolor=self.t["surface"],
+            linewidth=1.0,
+            labels=names,
+        )
+        if labels:
+            base = 0.0
+            for n in names:
+                v = float(columns[n][-1])
+                self.ax.annotate(
+                    f" {n}",
+                    (x[-1], base + v / 2),
+                    xytext=(4, 0),
+                    textcoords="offset points",
+                    fontsize=8.5,
+                    color=self.t["text"],
+                    va="center",
+                    annotation_clip=False,
+                )
+                base += v
+        self.ax.set_xlim(x[0], x[-1])
+
+    def hbars(self, labels, values, fmt="{:,.0f}", highlight: set | None = None, sort: bool = True):
+        """Horizontal bars, largest on top (or in the given order), value at the tip; highlighted bars in slot 1."""
+        pairs = list(zip(labels, values, strict=True))
+        pairs = sorted(pairs, key=lambda p: p[1]) if sort else pairs[::-1]
         ys = range(len(pairs))
-        colors = [
-            self.color(0) if highlight is None or lab in highlight else self.t["grid"]
-            for lab, _ in pairs
-        ]
+        colors = [self.color(0) if highlight is None or lab in highlight else self.t["grid"] for lab, _ in pairs]
         self.ax.barh(list(ys), [v for _, v in pairs], color=colors, height=0.6)
         self.ax.set_yticks(list(ys), [lab for lab, _ in pairs], color=self.t["text"])
         for y, (_, v) in zip(ys, pairs, strict=True):
