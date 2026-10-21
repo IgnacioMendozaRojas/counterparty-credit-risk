@@ -76,7 +76,8 @@ def results_table(profiles) -> str:
 # ── Figures ────────────────────────────────────────────────────────────
 SOURCE = (
     "Illustrative netting set: 10y payer IRS 100M, 5y receiver IRS 60M, 2y FX forward 20M. "
-    "10,000 Hull-White/GBM paths, weekly grid. github.com/IgnacioMendozaRojas/counterparty-credit-risk"
+    "10,000 Hull-White/GBM paths, weekly grid. "
+    "github.com/IgnacioMendozaRojas/counterparty-credit-risk"
 )
 
 
@@ -99,7 +100,8 @@ def figures(profiles, standalone_cva: float) -> None:
     cut = 1 - peak["CSA, zero threshold"] / peak["Uncollateralised"]
     for c in charts(
         f"Daily margining cuts peak exposure by {cut:.0%}",
-        "Potential future exposure (97.5%) of one netting set under three collateral agreements, millions",
+        "Potential future exposure (97.5%) of one netting set under three collateral "
+        "agreements, millions",
         SOURCE,
     ):
         for i, (n, lx, dy) in enumerate(zip(names, (2.6, 3.6, 4.4), (12, 10, 10), strict=True)):
@@ -107,7 +109,8 @@ def figures(profiles, standalone_cva: float) -> None:
         k = int(np.argmax(unsec.pfe[:end]))
         c.note(
             (x[k], unsec.pfe[k] / 1e6),
-            f"peak {peak['Uncollateralised'] / 1e6:.1f}M uncollateralised\n{peak['CSA, zero threshold'] / 1e6:.1f}M with daily margining",
+            f"peak {peak['Uncollateralised'] / 1e6:.1f}M uncollateralised\n"
+            f"{peak['CSA, zero threshold'] / 1e6:.1f}M with daily margining",
             (40, -10),
         )
         c.ax.set_ylim(bottom=0)
@@ -119,7 +122,8 @@ def figures(profiles, standalone_cva: float) -> None:
     # 2. Anatomy of the uncollateralised profile
     for c in charts(
         "Exposure peaks mid-life, then amortises with every coupon",
-        "Uncollateralised netting set: expected exposure (EE), PFE 97.5% and expected negative exposure, millions",
+        "Uncollateralised netting set: expected exposure (EE), PFE 97.5% and expected "
+        "negative exposure, millions",
         SOURCE,
     ):
         for i, (y, label, dy) in enumerate(
@@ -144,7 +148,8 @@ def figures(profiles, standalone_cva: float) -> None:
     for c in charts(
         f"Netting and margining take CVA from {standalone_cva / 1e3:,.0f}k to "
         f"{bars['Netted + CSA, zero threshold'] / 1e3:,.0f}k",
-        "Credit valuation adjustment of the same three trades, thousands; counterparty CDS 150bp, recovery 40%",
+        "Credit valuation adjustment of the same three trades, thousands; "
+        "counterparty CDS 150bp, recovery 40%",
         SOURCE,
         size=(9, 3.6),
     ):

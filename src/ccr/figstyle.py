@@ -123,7 +123,7 @@ class Chart:
         )
 
     def hbars(self, labels, values, fmt="{:,.0f}", highlight: set | None = None):
-        """Horizontal bars, largest on top, value at the tip; highlighted bars in slot 1, others muted."""
+        """Horizontal bars, largest on top, value at the tip; highlighted bars in slot 1."""
         pairs = sorted(zip(labels, values, strict=True), key=lambda p: p[1])
         ys = range(len(pairs))
         colors = [
