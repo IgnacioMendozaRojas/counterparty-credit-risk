@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install --no-cache-dir -e .
+      - run: pip install --no-cache-dir -e ".[plots]"
       - run: python examples/portfolio.py
       - run: python examples/sensitivities.py
       - name: Commit if changed
