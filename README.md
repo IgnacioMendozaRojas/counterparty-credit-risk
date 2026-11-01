@@ -12,13 +12,18 @@
 
 On one netting set (a 10-year payer swap of 100M, a 5-year receiver swap of 60M and a 2-year FX forward of 20M; counterparty CDS 150bp):
 
-- **Daily margining cuts peak PFE by 70%**, from 19.1M to 5.7M. A 5M threshold already takes it to 7.8M.
+- **The margin period of risk drives CVA, not the peak.** Under daily margining, going from a 10- to a 20-business-day margin period adds 44% to CVA (33k to 47k) but only 5% to peak PFE (5.7M to 6.0M), because the peak sits on the FX forward's settlement date, where the exposure is the settling cash flow, not market moves. A limit set on peak PFE would miss what the longer margin period costs.
 - **Netting the three trades cuts CVA by 26%** against booking them standalone (427k to 316k); a zero-threshold CSA takes it to 33k.
 - **Collateralised exposure spikes on payment dates**, because a settling trade leaves the netting set while collateral still reflects its value ten days earlier. The engine reproduces this known effect instead of smoothing it away.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/pfe-by-csa-dark.png">
   <img alt="PFE 97.5% under three collateral agreements: uncollateralised peaks at 19.1M in year 5.5, threshold 5M stays near 6M, zero threshold near 2M with spikes on payment dates" src="docs/pfe-by-csa-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/margin-period-dark.png">
+  <img alt="PFE under a zero-threshold CSA with margin periods of 5, 10 and 20 days: the level rises with the margin period, but the peak at the FX forward's settlement in year 2 is about 6M in all three" src="docs/margin-period-light.png">
 </picture>
 
 ## What this shows
@@ -58,6 +63,13 @@ trade's value leaves the netting set while collateral still reflects the value o
   <source media="(prefers-color-scheme: dark)" srcset="docs/cva-by-decision-dark.png">
   <img alt="CVA of the same trades: 427k standalone, 316k netted, 208k with a 5M-threshold CSA, 33k with a zero-threshold CSA" src="docs/cva-by-decision-light.png">
 </picture>
+
+## Model choices that move the numbers
+
+Run with `python examples/sensitivities.py` (same paths, so only the parameter changes; the `Results` workflow reruns it whenever the engine changes). Full table in [`docs/sensitivities.md`](docs/sensitivities.md).
+
+- **Margin period of risk** (zero-threshold CSA): from 5 to 10 to 20 business days, CVA goes 23k, 33k, 47k, close to the square-root-of-time scaling of a diffusion; peak PFE goes 5.6M, 5.7M, 6.0M, because it is set by the settlement spike, not by the margin period. Daily margining also cuts peak PFE by 70% against no collateral (19.1M to 5.7M), the expected direction.
+- **Rate-FX correlation**: from -0.5 to +0.5, uncollateralised CVA moves 7% (308k to 329k) and peak PFE does not move. This portfolio is dominated by the swaps; the correlation would matter for a book of cross-currency trades.
 
 ## How it works
 

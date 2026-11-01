@@ -99,12 +99,17 @@ def figure(mpr: dict, h: dict) -> None:
     ):
         for i, days in enumerate(MPR_DAYS):
             c.line(
-                t[:end], np.asarray(mpr[days]["pfe"][:end]) / 1e6, i, f"{days} days", dy=(i - 1) * 6
+                t[:end],
+                np.asarray(mpr[days]["pfe"][:end]) / 1e6,
+                i,
+                f"{days} days",
+                end_label=False,
             )
         k = int(np.argmax(mpr[10]["pfe"]))
         c.note(
             (t[k], mpr[10]["peak_pfe"] / 1e6),
-            f"peak at year {t[k]:.1f}: {h['peak_over_median_10d']:.1f}x the median level",
+            f"FX forward settles: peak {mpr[10]['peak_pfe'] / 1e6:.1f}M, "
+            f"{h['peak_over_median_10d']:.1f}x the usual level",
             (30, 10),
         )
         c.ax.set_ylim(bottom=0)
